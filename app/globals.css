@@ -1,0 +1,417 @@
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Jost:wght@300;400;500;600&family=Courier+Prime:wght@400;700&display=swap');
+
+:root {
+  --ink: #16202e;
+  --ink-soft: #35435a;
+  /* Pale blue drawn from the marble. Also the fallback while the image
+     loads, so the page never flashes a different colour. */
+  --paper: #cfe3ed;
+  --card: #f7f6f1;
+  /* How strongly the marble is muted behind the content. Lower brings the
+     stone forward, higher calms it down. */
+  --wash: 0.52;
+  --plum: #6b2d4f;
+  --verdigris: #3d6b5e;
+  --smoke: #868a83;
+  --gold: #a8894c;
+  --rule: rgba(22, 32, 46, 0.15);
+  /* Reserved for the guest-facing reply form, so it reads as the one place
+     on the page that wants something from the reader. */
+  --rsvp-ink: #16305c;
+  --rsvp-ink-soft: #45608d;
+  /* The address line is positioned off this, so the two can never collide
+     no matter how the seal is resized. */
+  --seal-size: 104px;
+  --display: 'Bodoni Moda', Didot, Georgia, serif;
+  --body: 'Jost', 'Avenir Next', system-ui, sans-serif;
+  --mono: 'Courier Prime', 'Courier New', monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--body);
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+}
+
+html { background: var(--paper); }
+
+body {
+  padding: 28px 18px 64px;
+  min-height: 100vh;
+  position: relative;
+  background: transparent;
+}
+
+/* Painted by a fixed pseudo-element rather than background-attachment: fixed,
+   which stutters badly while scrolling on iOS Safari. The white gradient on
+   top is a wash that keeps the cream cards reading as objects on the stone
+   instead of competing with it. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(
+      rgba(255, 255, 255, var(--wash)),
+      rgba(255, 255, 255, calc(var(--wash) + 0.1))
+    ),
+    url('/background-mobile.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Phones get the smaller file; anything wider loads the full one. */
+@media (min-width: 700px) {
+  body::before {
+    background-image:
+      linear-gradient(
+        rgba(255, 255, 255, var(--wash)),
+        rgba(255, 255, 255, calc(var(--wash) + 0.1))
+      ),
+      url('/background.jpg');
+  }
+}
+button { font-family: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--plum); outline-offset: 2px; }
+a { color: inherit; }
+
+.wrap { max-width: 620px; margin: 0 auto; }
+.wrap-wide { max-width: 820px; margin: 0 auto; }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--smoke);
+}
+.rule-thin { height: 1px; background: var(--rule); border: 0; margin: 0; }
+.rule-gold {
+  height: 1px; border: 0; margin: 0;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0.7;
+}
+
+/* --- envelope --- */
+.env-stage { perspective: 1400px; display: flex; justify-content: center; padding: 40px 0 24px; }
+.env {
+  position: relative;
+  width: min(560px, 94vw);
+  aspect-ratio: 1.55 / 1;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  box-shadow: 0 22px 44px -26px rgba(22, 32, 46, 0.5);
+  cursor: pointer;
+  transition: transform 0.5s ease, opacity 0.5s ease;
+  border-radius: 2px;
+}
+.env:hover { transform: translateY(-3px); }
+.env-body { position: absolute; inset: 0; overflow: hidden; border-radius: 2px; }
+.env-flap {
+  position: absolute; left: 0; right: 0; top: 0; height: 58%;
+  background: linear-gradient(178deg, #f7f7f3, #ecece6);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transform-origin: top center;
+  transform: rotateX(0deg);
+  transition: transform 0.85s cubic-bezier(0.5, 0, 0.2, 1);
+  z-index: 3;
+  box-shadow: 0 1px 0 rgba(22, 32, 46, 0.08);
+}
+.env.is-open .env-flap { transform: rotateX(-172deg); z-index: 1; }
+.seal {
+  position: absolute; left: 50%; top: 46%;
+  width: var(--seal-size); height: var(--seal-size);
+  margin: calc(var(--seal-size) / -2) 0 0 calc(var(--seal-size) / -2);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #8c3e68, var(--plum) 58%, #4a1c36);
+  color: #f0e3ea;
+  display: grid; place-items: center;
+  font-family: var(--display); font-size: 38px; font-weight: 500;
+  transform: rotate(-7deg);
+  box-shadow: 0 4px 10px -3px rgba(22, 32, 46, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  z-index: 4;
+  transition: opacity 0.35s ease, transform 0.5s ease;
+}
+.env.is-open .seal { opacity: 0; transform: rotate(-7deg) scale(0.8); }
+
+/* A surname rather than a monogram: smaller, spaced, and allowed to wrap. */
+.seal-word {
+  font-size: clamp(14px, 3.4vw, 18px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  padding: 0 12px;
+  text-align: center;
+  word-break: break-word;
+}
+.env-addr {
+  /* Sits just below the wax, whatever size the wax happens to be. */
+  position: absolute; left: 0; right: 0;
+  top: calc(46% + var(--seal-size) / 2 + 16px);
+  text-align: center; z-index: 2;
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.env-hint { position: absolute; left: 0; right: 0; bottom: 9%; text-align: center; z-index: 4; }
+.env.is-open .env-hint { opacity: 0; transition: opacity 0.3s; }
+.env.is-gone { opacity: 0; transform: translateY(14px) scale(0.97); pointer-events: none; }
+
+/* --- card --- */
+.card {
+  animation-delay: 0.08s;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  box-shadow: 0 30px 60px -38px rgba(22, 32, 46, 0.55);
+  overflow: hidden;
+  animation: cardIn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: none; }
+}
+/* The photo sits in its own frame above the card and is never cropped —
+   whatever shape the host uploads is the shape guests see. */
+.photo {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 10px;
+  margin: 0 0 18px;
+  box-shadow: 0 30px 60px -38px rgba(22, 32, 46, 0.55);
+  animation: cardIn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1px;
+}
+.card-inner { padding: 34px 30px 36px; text-align: center; }
+.card-hosts {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--smoke); margin: 0 0 16px;
+}
+.card-title {
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(30px, 7.4vw, 46px); line-height: 1.06;
+  margin: 0 0 20px; letter-spacing: -0.01em;
+}
+.detail-grid { display: grid; gap: 14px; margin: 22px 0 0; }
+.detail-row { display: grid; gap: 3px; }
+.detail-k {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--smoke);
+}
+.detail-v { font-size: 15px; font-weight: 400; line-height: 1.45; }
+.detail-v-strong { font-family: var(--display); font-size: 19px; font-weight: 500; }
+
+/* When and where are what a guest actually needs off this card, so they get
+   more size than the supporting rows. Dress and reply-by stay small. */
+.detail-row-lg { gap: 5px; }
+.detail-row-lg .detail-v-strong { font-size: clamp(21px, 5.2vw, 25px); line-height: 1.2; }
+.detail-row-lg .detail-v { font-size: clamp(16px, 3.9vw, 17.5px); line-height: 1.5; }
+.card-note {
+  margin: 24px auto 0; max-width: 42ch; font-size: 14.5px; line-height: 1.65;
+  color: var(--ink-soft); font-weight: 300;
+}
+
+/* --- the reply form ---
+   Scoped so the dark blue applies only where a guest is being asked to act,
+   and never leaks into the host dashboard, which uses the same classes. */
+.rsvp-panel { color: var(--rsvp-ink); }
+.rsvp-panel .panel-title,
+.rsvp-panel .guest-answer { color: var(--rsvp-ink); }
+.rsvp-panel .field label { color: var(--rsvp-ink-soft); }
+.rsvp-panel .field input,
+.rsvp-panel .field textarea {
+  color: var(--rsvp-ink);
+  border-color: rgba(22, 48, 92, 0.22);
+}
+.rsvp-panel .field input::placeholder,
+.rsvp-panel .field textarea::placeholder { color: rgba(69, 96, 141, 0.6); }
+.rsvp-panel .field input:focus,
+.rsvp-panel .field textarea:focus { border-color: var(--rsvp-ink); }
+.rsvp-panel .field-hint { color: var(--rsvp-ink-soft); }
+.rsvp-panel .eyebrow { color: var(--rsvp-ink-soft); }
+.rsvp-panel .choice {
+  color: var(--rsvp-ink-soft);
+  border-color: rgba(22, 48, 92, 0.22);
+}
+.rsvp-panel .choice:hover { border-color: var(--rsvp-ink); }
+.rsvp-panel .choice[aria-pressed='true'] {
+  background: var(--rsvp-ink);
+  border-color: var(--rsvp-ink);
+  color: var(--card);
+}
+.rsvp-panel .choice-yes[aria-pressed='true'] {
+  background: var(--verdigris);
+  border-color: var(--verdigris);
+}
+.rsvp-panel .choice-no[aria-pressed='true'] {
+  background: var(--plum);
+  border-color: var(--plum);
+}
+
+/* --- controls --- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--card);
+  font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 12px 20px; border-radius: 1px; text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+.btn:hover { background: var(--ink-soft); border-color: var(--ink-soft); }
+.btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost { background: transparent; color: var(--ink); }
+.btn-ghost:hover { background: rgba(22, 32, 46, 0.06); }
+.btn-plum { background: var(--plum); border-color: var(--plum); }
+.btn-plum:hover { background: #7d3a5e; border-color: #7d3a5e; }
+.btn-sm { padding: 8px 14px; font-size: 11px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.field { display: grid; gap: 6px; margin-bottom: 16px; }
+.field label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--smoke);
+}
+.field input, .field textarea, .field select {
+  font-family: var(--body); font-size: 15px; font-weight: 300; color: var(--ink);
+  background: var(--card); border: 1px solid var(--rule); border-radius: 1px;
+  padding: 11px 12px; width: 100%;
+}
+.field textarea { resize: vertical; min-height: 84px; line-height: 1.55; }
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline: none; border-color: var(--ink-soft);
+}
+.field-hint { font-size: 12px; color: var(--smoke); }
+.field-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.choice-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.choice {
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink-soft);
+  padding: 13px 6px; border-radius: 1px; font-size: 12px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; transition: all 0.15s ease;
+}
+.choice:hover { border-color: var(--ink-soft); }
+.choice[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.choice-yes[aria-pressed='true'] { background: var(--verdigris); border-color: var(--verdigris); }
+.choice-no[aria-pressed='true'] { background: var(--plum); border-color: var(--plum); }
+
+.panel {
+  background: var(--card); border: 1px solid var(--rule);
+  border-radius: 2px; padding: 26px 24px; margin-bottom: 18px;
+  box-shadow: 0 20px 44px -34px rgba(12, 40, 66, 0.6);
+}
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.panel-title { font-family: var(--display); font-size: 21px; font-weight: 500; margin: 0; }
+
+/* Back to the dashboard. Sits above the event name where a back control is
+   expected, rather than competing with the actions on the right. */
+.backlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--smoke);
+  transition: color 0.15s ease;
+}
+.backlink:hover { color: var(--ink); }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); margin-bottom: 22px; }
+.tab {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 11px 14px; font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--smoke);
+  margin-bottom: -1px;
+}
+.tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--plum); }
+
+.stat-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.stat { background: var(--card); padding: 16px 8px; text-align: center; }
+.stat-n { font-family: var(--display); font-size: 28px; font-weight: 500; line-height: 1; }
+.stat-l { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--smoke); margin-top: 7px; }
+
+/* Stat tiles double as filters. Colour matches the status dots so the
+   selected tile and the rows below read as the same thing. */
+.stat-btn {
+  border: 0;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.stat-btn:hover { background: rgba(22, 32, 46, 0.05); }
+.stat-btn[aria-pressed='true'] .stat-n,
+.stat-btn[aria-pressed='true'] .stat-l { color: var(--card); }
+.stat-btn[aria-pressed='true'] { background: var(--ink); }
+.stat-yes[aria-pressed='true'] { background: var(--verdigris); }
+.stat-maybe[aria-pressed='true'] { background: var(--gold); }
+.stat-no[aria-pressed='true'] { background: var(--plum); }
+.stat-pending[aria-pressed='true'] { background: var(--ink-soft); }
+
+.guest { display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.guest:last-child { border-bottom: 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; flex: 0 0 auto; }
+.dot-yes { background: var(--verdigris); }
+.dot-no { background: var(--plum); }
+.dot-maybe { background: var(--gold); }
+.dot-pending { background: var(--rule); border: 1px solid var(--smoke); }
+.guest-name { font-size: 15px; font-weight: 400; }
+.guest-meta { font-family: var(--mono); font-size: 11px; color: var(--smoke); margin-top: 3px; word-break: break-word; }
+.guest-note { font-size: 13.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.5; font-style: italic; }
+
+.empty { text-align: center; padding: 34px 16px; }
+.empty p { color: var(--smoke); font-size: 14px; margin: 0 0 4px; }
+
+.callout {
+  border-left: 2px solid var(--gold); background: rgba(168, 137, 76, 0.07);
+  padding: 14px 16px; margin-bottom: 18px; font-size: 14px; line-height: 1.6;
+}
+.callout-bad { border-left-color: var(--plum); background: rgba(107, 45, 79, 0.07); }
+.callout strong { font-weight: 500; }
+
+.imgdrop {
+  border: 1px dashed rgba(22, 32, 46, 0.28); border-radius: 2px; padding: 26px;
+  text-align: center; background: rgba(255, 255, 255, 0.35);
+}
+.imgdrop img { max-width: 100%; max-height: 220px; display: block; margin: 0 auto 14px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  background: var(--ink); color: var(--card); padding: 11px 18px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; border-radius: 1px; z-index: 60;
+}
+
+@media (max-width: 560px) {
+  /* A narrow envelope is shorter, so give the wax less room and the card a
+     taller shape to keep everything clear of everything else. */
+  :root { --seal-size: 82px; }
+  .env { aspect-ratio: 1.4 / 1; }
+  .stat-row { grid-template-columns: repeat(3, 1fr); }
+  .field-2 { grid-template-columns: 1fr; }
+  .card-inner { padding: 28px 20px 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
