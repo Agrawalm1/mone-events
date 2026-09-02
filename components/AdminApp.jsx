@@ -99,9 +99,19 @@ export default function AdminApp() {
   // ── Contacts ──────────────────────────────────────────────────
   const [contacts, setContacts] = useState([]);
   const [contactSearch, setContactSearch] = useState('');
-  const [contactDraft, setContactDraft] = useState(null);   // null = closed, {} = new, {id,...} = editing
+  const [contactTagFilter, setContactTagFilter] = useState('');
+  const [contactDraft, setContactDraft] = useState(null);
   const [contactBusy, setContactBusy] = useState(false);
   const [contactError, setContactError] = useState('');
+  const [importText, setImportText] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [addFromContacts, setAddFromContacts] = useState(false);
+  const [contactPicks, setContactPicks] = useState(new Set());
+  const [contactPickSearch, setContactPickSearch] = useState('');
+  const [contactPickTag, setContactPickTag] = useState('');
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const importFileRef = useRef(null);
 
   function say(msg) {
     setToast(msg);
@@ -168,6 +178,57 @@ export default function AdminApp() {
     });
     loadContacts(contactSearch);
     say('Contact deleted.');
+  }
+
+  async function importContacts() {
+    if (!importText.trim()) return;
+    setContactBusy(true);
+    const res = await fetch('/api/admin/contacts/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ csv: importText }),
+    });
+    const data = await res.json();
+    setContactBusy(false);
+    if (data.error) { setContactError(data.error); return; }
+    setImportResult(data);
+    setImportText('');
+    loadContacts(contactSearch);
+  }
+
+  function exportContacts() {
+    window.location.href = '/api/admin/contacts/export';
+  }
+
+  async function requestUpdates() {
+    if (!confirm('Send an update request email to all contacts with an email address?')) return;
+    setUpdateBusy(true);
+    const res = await fetch('/api/admin/contacts/request-update', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    setUpdateBusy(false);
+    if (data.error) { say(data.error); return; }
+    say(`Update requests sent to ${data.sent} contact${data.sent === 1 ? '' : 's'}.`);
+  }
+
+  async function addPickedContacts() {
+    if (!contactPicks.size) return;
+    const picked = contacts.filter(c => contactPicks.has(c.id));
+    const roster = picked.map(c => c.email ? `${c.name} <${c.email}>` : c.name).join('\n');
+    const res = await fetch('/api/admin/guests', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ roster, eventId }),
+    });
+    const data = await res.json();
+    if (data.guests) setGuests(data.guests);
+    setAddFromContacts(false);
+    setContactPicks(new Set());
+    setContactPickSearch('');
+    say(`Added ${data.added} guest${data.added === 1 ? '' : 's'}.`);
   }
 
   async function openEvent(id) {
@@ -622,12 +683,13 @@ export default function AdminApp() {
   }
 
   if (view === 'contacts') {
-    const blankDraft = { name: '', email: '', phone: '', address: '', birthday: '', notes: '' };
-    const filtered = contacts.filter(c =>
-      !contactSearch ||
-      c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
-      c.email.toLowerCase().includes(contactSearch.toLowerCase())
-    );
+    const blankDraft = { name: '', email: '', phone: '', address: '', birthday: '', notes: '', tags: '' };
+    const allTags = [...new Set(contacts.flatMap(c => c.tags ? c.tags.split(',').map(t => t.trim()).filter(Boolean) : []))].sort();
+    const filtered = contacts.filter(c => {
+      const matchSearch = !contactSearch || c.name.toLowerCase().includes(contactSearch.toLowerCase()) || c.email.toLowerCase().includes(contactSearch.toLowerCase());
+      const matchTag = !contactTagFilter || (c.tags || '').split(',').map(t => t.trim()).includes(contactTagFilter);
+      return matchSearch && matchTag;
+    });
     const upcomingBirthdays = contacts
       .filter(c => c.birthday)
       .map(c => {
@@ -656,6 +718,15 @@ export default function AdminApp() {
             <button className="btn btn-sm" onClick={() => { setContactError(''); setContactDraft({ ...blankDraft }); }}>
               Add contact
             </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setImportOpen(o => !o); setImportResult(null); setContactError(''); }}>
+              Import CSV
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={exportContacts}>
+              Export CSV
+            </button>
+            <button className="btn btn-ghost btn-sm" disabled={updateBusy} onClick={requestUpdates}>
+              {updateBusy ? 'Sending…' : 'Request updates'}
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign out</button>
           </div>
         </div>
@@ -677,15 +748,69 @@ export default function AdminApp() {
           </div>
         )}
 
-        {/* Search */}
-        <div style={{ marginBottom: 16 }}>
+        {/* Import CSV panel */}
+        {importOpen && (
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <p className="eyebrow" style={{ marginBottom: 8 }}>Import contacts from CSV</p>
+            <p style={{ fontSize: 13, color: 'var(--smoke)', marginBottom: 12, lineHeight: 1.6 }}>
+              Paste CSV text below. Your file should have a header row with columns like Name, Email, Phone, Address, Birthday, Tags.
+              Existing contacts with the same email will be updated, not duplicated.
+            </p>
+            <input type="file" accept=".csv,.txt" ref={importFileRef} style={{ display: 'none' }} onChange={e => {
+              const file = e.target.files[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = ev => setImportText(ev.target.result);
+              reader.readAsText(file);
+            }} />
+            <button className="btn btn-ghost btn-sm" style={{ marginBottom: 10 }} onClick={() => importFileRef.current?.click()}>
+              Choose file
+            </button>
+            <textarea
+              className="field"
+              rows={6}
+              placeholder={'Name,Email,Phone,Address,Birthday,Tags\nJane Smith,jane@example.com,555-1234,"123 Main St, Houston TX",1985-06-15,"family, friends"'}
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+              style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 12 }}
+            />
+            {importResult && (
+              <p style={{ fontSize: 13, color: 'var(--smoke)', marginBottom: 12 }}>
+                ✓ {importResult.added} added / updated · {importResult.skipped} skipped
+              </p>
+            )}
+            {contactError && <p style={{ color: 'var(--plum)', fontSize: 13, marginBottom: 10 }}>{contactError}</p>}
+            <div className="btn-row">
+              <button className="btn btn-sm" disabled={contactBusy || !importText.trim()} onClick={importContacts}>
+                {contactBusy ? 'Importing…' : 'Import'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setImportOpen(false); setImportText(''); setImportResult(null); setContactError(''); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Search + tag filter */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <input
             className="field"
             placeholder="Search by name or email…"
             value={contactSearch}
             onChange={e => setContactSearch(e.target.value)}
-            style={{ maxWidth: 360 }}
+            style={{ maxWidth: 300 }}
           />
+          {allTags.length > 0 && (
+            <select
+              className="field"
+              value={contactTagFilter}
+              onChange={e => setContactTagFilter(e.target.value)}
+              style={{ maxWidth: 180 }}
+            >
+              <option value="">All tags</option>
+              {allTags.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
         </div>
 
         {/* Add / Edit form */}
@@ -714,6 +839,11 @@ export default function AdminApp() {
             <label className="field-wrap" style={{ marginBottom: 12 }}>
               <span className="eyebrow">Address</span>
               <input className="field" value={contactDraft.address} onChange={e => setContactDraft(d => ({ ...d, address: e.target.value }))} />
+            </label>
+            <label className="field-wrap" style={{ marginBottom: 12 }}>
+              <span className="eyebrow">Tags</span>
+              <input className="field" value={contactDraft.tags} onChange={e => setContactDraft(d => ({ ...d, tags: e.target.value }))} placeholder="family, close friends, work" />
+              <span style={{ fontSize: 12, color: 'var(--smoke)', marginTop: 4, display: 'block' }}>Comma-separated. Used to filter and group contacts.</span>
             </label>
             <label className="field-wrap" style={{ marginBottom: 16 }}>
               <span className="eyebrow">Notes</span>
@@ -1246,6 +1376,81 @@ export default function AdminApp() {
             <button className="btn" disabled={busy === 'roster' || !roster.trim()} onClick={addGuests}>
               {busy === 'roster' ? 'Adding\u2026' : 'Add to list'}
             </button>
+
+            <hr className="rule-thin" style={{ margin: '22px 0 18px' }} />
+            <div className="field">
+              <label>Or pick from your contacts</label>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setAddFromContacts(o => !o); if (!addFromContacts) { loadContacts(); setContactPicks(new Set()); setContactPickSearch(''); setContactPickTag(''); } }}
+              >
+                {addFromContacts ? 'Close' : 'Browse contacts'}
+              </button>
+            </div>
+
+            {addFromContacts && (() => {
+              const allTags = [...new Set(contacts.flatMap(c => c.tags ? c.tags.split(',').map(t => t.trim()).filter(Boolean) : []))].sort();
+              const pickerFiltered = contacts.filter(c => {
+                const matchSearch = !contactPickSearch || c.name.toLowerCase().includes(contactPickSearch.toLowerCase()) || c.email.toLowerCase().includes(contactPickSearch.toLowerCase());
+                const matchTag = !contactPickTag || (c.tags || '').split(',').map(t => t.trim()).includes(contactPickTag);
+                return matchSearch && matchTag;
+              });
+              return (
+                <div style={{ border: '1px solid var(--rule)', borderRadius: 2, padding: '16px', marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <input
+                      className="field"
+                      placeholder="Search by name or email…"
+                      value={contactPickSearch}
+                      onChange={e => setContactPickSearch(e.target.value)}
+                      style={{ maxWidth: 240, marginBottom: 0 }}
+                    />
+                    {allTags.length > 0 && (
+                      <select
+                        className="field"
+                        value={contactPickTag}
+                        onChange={e => setContactPickTag(e.target.value)}
+                        style={{ maxWidth: 160, marginBottom: 0 }}
+                      >
+                        <option value="">All tags</option>
+                        {allTags.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    )}
+                  </div>
+                  {pickerFiltered.length === 0 ? (
+                    <p style={{ fontSize: 13, color: 'var(--smoke)' }}>No contacts match.</p>
+                  ) : (
+                    <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {pickerFiltered.map(c => (
+                        <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 4px', cursor: 'pointer', fontSize: 14 }}>
+                          <input
+                            type="checkbox"
+                            style={{ width: 'auto', margin: 0 }}
+                            checked={contactPicks.has(c.id)}
+                            onChange={e => setContactPicks(prev => {
+                              const next = new Set(prev);
+                              e.target.checked ? next.add(c.id) : next.delete(c.id);
+                              return next;
+                            })}
+                          />
+                          <span style={{ fontWeight: 500 }}>{c.name}</span>
+                          {c.email && <span style={{ color: 'var(--smoke)', fontSize: 12 }}>{c.email}</span>}
+                          {c.tags && <span style={{ fontSize: 11, color: 'var(--smoke)', fontStyle: 'italic' }}>{c.tags}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div className="btn-row" style={{ marginTop: 12 }}>
+                    <button className="btn btn-sm" disabled={contactPicks.size === 0} onClick={addPickedContacts}>
+                      Add {contactPicks.size > 0 ? contactPicks.size : ''} to guest list
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setContactPicks(new Set()); }}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {events.length > 1 ? (
               <>
