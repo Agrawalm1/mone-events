@@ -96,6 +96,13 @@ export default function AdminApp() {
   const [sendReport, setSendReport] = useState(null);
   const fileRef = useRef(null);
 
+  // ── Contacts ──────────────────────────────────────────────────
+  const [contacts, setContacts] = useState([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactDraft, setContactDraft] = useState(null);   // null = closed, {} = new, {id,...} = editing
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactError, setContactError] = useState('');
+
   function say(msg) {
     setToast(msg);
     setTimeout(() => setToast(''), 2600);
@@ -127,6 +134,40 @@ export default function AdminApp() {
     setAuthed(true);
     setLoading(false);
     return data.events || [];
+  }
+
+  async function loadContacts(q = '') {
+    const res = await fetch('/api/admin/contacts' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+    const data = await res.json();
+    setContacts(data.contacts || []);
+  }
+
+  async function saveContact(draft) {
+    setContactBusy(true);
+    setContactError('');
+    const method = draft.id ? 'PATCH' : 'POST';
+    const res = await fetch('/api/admin/contacts', {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    const data = await res.json();
+    setContactBusy(false);
+    if (data.error) { setContactError(data.error); return; }
+    setContactDraft(null);
+    loadContacts(contactSearch);
+    say(draft.id ? 'Contact updated.' : 'Contact added.');
+  }
+
+  async function deleteContact(id) {
+    if (!confirm('Delete this contact? This cannot be undone.')) return;
+    await fetch('/api/admin/contacts', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    loadContacts(contactSearch);
+    say('Contact deleted.');
   }
 
   async function openEvent(id) {
@@ -474,6 +515,9 @@ export default function AdminApp() {
             <button className="btn btn-sm" onClick={newEvent}>
               New event
             </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setView('contacts'); loadContacts(); }}>
+              Contacts
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={signOut}>
               Sign out
             </button>
@@ -573,6 +617,163 @@ export default function AdminApp() {
             );
           })
         )}
+      </div>
+    );
+  }
+
+  if (view === 'contacts') {
+    const blankDraft = { name: '', email: '', phone: '', address: '', birthday: '', notes: '' };
+    const filtered = contacts.filter(c =>
+      !contactSearch ||
+      c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+      c.email.toLowerCase().includes(contactSearch.toLowerCase())
+    );
+    const upcomingBirthdays = contacts
+      .filter(c => c.birthday)
+      .map(c => {
+        const bday = new Date(c.birthday);
+        const now = new Date();
+        const next = new Date(now.getFullYear(), bday.getUTCMonth(), bday.getUTCDate());
+        if (next < now) next.setFullYear(now.getFullYear() + 1);
+        const days = Math.round((next - now) / 86400000);
+        return { ...c, daysUntil: days };
+      })
+      .filter(c => c.daysUntil <= 30)
+      .sort((a, b) => a.daysUntil - b.daysUntil);
+
+    return (
+      <div className="wrap-wide">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 22 }}>
+          <div>
+            <button className="backlink" onClick={() => setView('overview')}>
+              <span aria-hidden="true">&larr;</span> Dashboard
+            </button>
+            <h1 style={{ fontFamily: 'var(--display)', fontSize: 27, fontWeight: 500, margin: '8px 0 0' }}>
+              Contacts
+            </h1>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-sm" onClick={() => { setContactError(''); setContactDraft({ ...blankDraft }); }}>
+              Add contact
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+
+        {/* Upcoming birthdays */}
+        {upcomingBirthdays.length > 0 && (
+          <div className="panel" style={{ marginBottom: 20, borderLeft: '3px solid var(--plum)' }}>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Birthdays in the next 30 days</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px' }}>
+              {upcomingBirthdays.map(c => (
+                <span key={c.id} style={{ fontSize: 14 }}>
+                  <strong>{c.name}</strong>
+                  <span style={{ color: 'var(--smoke)', marginLeft: 6 }}>
+                    {c.daysUntil === 0 ? '🎂 Today!' : `in ${c.daysUntil} day${c.daysUntil === 1 ? '' : 's'}`}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div style={{ marginBottom: 16 }}>
+          <input
+            className="field"
+            placeholder="Search by name or email…"
+            value={contactSearch}
+            onChange={e => setContactSearch(e.target.value)}
+            style={{ maxWidth: 360 }}
+          />
+        </div>
+
+        {/* Add / Edit form */}
+        {contactDraft && (
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <p className="eyebrow" style={{ marginBottom: 14 }}>{contactDraft.id ? 'Edit contact' : 'New contact'}</p>
+            {contactError && <p style={{ color: 'var(--plum)', fontSize: 13, marginBottom: 10 }}>{contactError}</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
+              <label className="field-wrap">
+                <span className="eyebrow">Name *</span>
+                <input className="field" value={contactDraft.name} onChange={e => setContactDraft(d => ({ ...d, name: e.target.value }))} />
+              </label>
+              <label className="field-wrap">
+                <span className="eyebrow">Email</span>
+                <input className="field" type="email" value={contactDraft.email} onChange={e => setContactDraft(d => ({ ...d, email: e.target.value }))} />
+              </label>
+              <label className="field-wrap">
+                <span className="eyebrow">Phone</span>
+                <input className="field" type="tel" value={contactDraft.phone} onChange={e => setContactDraft(d => ({ ...d, phone: e.target.value }))} />
+              </label>
+              <label className="field-wrap">
+                <span className="eyebrow">Birthday</span>
+                <input className="field" type="date" value={contactDraft.birthday} onChange={e => setContactDraft(d => ({ ...d, birthday: e.target.value }))} />
+              </label>
+            </div>
+            <label className="field-wrap" style={{ marginBottom: 12 }}>
+              <span className="eyebrow">Address</span>
+              <input className="field" value={contactDraft.address} onChange={e => setContactDraft(d => ({ ...d, address: e.target.value }))} />
+            </label>
+            <label className="field-wrap" style={{ marginBottom: 16 }}>
+              <span className="eyebrow">Notes</span>
+              <textarea className="field" rows={2} value={contactDraft.notes} onChange={e => setContactDraft(d => ({ ...d, notes: e.target.value }))} />
+            </label>
+            <div className="btn-row">
+              <button className="btn btn-sm" disabled={contactBusy} onClick={() => saveContact(contactDraft)}>
+                {contactBusy ? 'Saving…' : 'Save'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setContactDraft(null); setContactError(''); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Contacts table */}
+        {filtered.length === 0 ? (
+          <div className="panel">
+            <div className="empty">
+              <p>{contactSearch ? 'No contacts match your search.' : 'No contacts yet.'}</p>
+              {!contactSearch && <p>Click "Add contact" to get started.</p>}
+            </div>
+          </div>
+        ) : (
+          <div className="panel" style={{ padding: 0, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--rule)' }}>
+                  {['Name', 'Email', 'Phone', 'Birthday', 'Address', ''].map(h => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--smoke)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(c => (
+                  <tr key={c.id} style={{ borderBottom: '1px solid var(--rule)' }}>
+                    <td style={{ padding: '12px 16px', fontWeight: 500 }}>{c.name}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--smoke)' }}>{c.email || '—'}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--smoke)', whiteSpace: 'nowrap' }}>{c.phone || '—'}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--smoke)', whiteSpace: 'nowrap' }}>
+                      {c.birthday ? new Date(c.birthday + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                    <td style={{ padding: '12px 16px', color: 'var(--smoke)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.address || '—'}</td>
+                    <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
+                      <div className="btn-row">
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setContactError(''); setContactDraft({ ...c, birthday: c.birthday ? c.birthday.slice(0, 10) : '' }); }}>Edit</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => deleteContact(c.id)}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p style={{ marginTop: 12, fontSize: 12, color: 'var(--smoke)' }}>
+          {contacts.length} contact{contacts.length === 1 ? '' : 's'} total
+        </p>
       </div>
     );
   }
